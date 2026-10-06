@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Mobil Rehab Oyunu</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    
+    <style>
+        body { 
+            margin: 0; padding: 0; overflow: hidden; 
+            background-color: #1e2227; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        }
+        #gameCanvas { 
+            width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); 
+        }
+        #uiLayer { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; 
+        }
+        #startBtn { 
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            padding: 18px 40px; font-size: 22px; font-weight: bold; background-color: #e74c3c; 
+            color: white; border: none; border-radius: 50px; cursor: pointer; pointer-events: auto;
+            box-shadow: 0px 8px 15px rgba(0, 0, 0, 0.3);
+        }
+        .info { 
+            position: absolute; font-size: 24px; font-weight: bold; padding: 15px; 
+            text-shadow: 2px 2px 4px #000; 
+        }
+        #roundInfo { top: 10px; left: 10px; color: #f1c40f; }
+        #appleInfo { top: 40px; left: 10px; color: #2ecc71; }
+        #livesInfo { top: 10px; right: 10px; color: #e74c3c; }
+        
+        #messageBox {
+            display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background-color: rgba(0,0,0,0.85); padding: 40px; border-radius: 20px; text-align: center;
+        }
+        .btn-restart {
+            padding: 12px 25px; font-size: 20px; border-radius: 10px; pointer-events: auto;
+            background-color: #3498db; color: white; border: none; cursor: pointer; margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <video id="input_video" style="display: none;" playsinline></video>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="uiLayer">
+        <div id="roundInfo" class="info" style="display: none;">ROUND: 1</div>
+        <div id="appleInfo" class="info" style="display: none;">ELMA: 0 / 10</div>
+        <div id="livesInfo" class="info" style="display: none;">CAN: ❤️❤️❤️</div>
+        
+        <button id="startBtn">Kamerayı Aç ve Başla</button>
+        
+        <!-- Mesaj Kutusu (Round Geçişi ve Oyun Bittiğinde Kullanılır) -->
+        <div id="messageBox">
+            <h1 id="messageTitle" style="color: #2ecc71; margin: 0; font-size: 36px;">TEBRİKLER!</h1>
+            <h2 id="messageSubtitle" style="color: #fff; margin: 20px 0;">ROUND 2 BAŞLIYOR...</h2>
+            <button id="restartBtn" class="btn-restart" onclick="location.reload()" style="display: none;">Tekrar Oyna</button>
+        </div>
+    </div>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('gameCanvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const roundDiv = document.getElementById('roundInfo');
+        const appleDiv = document.getElementById('appleInfo');
+        const livesDiv = document.getElementById('livesInfo');
+        const messageBox = document.getElementById('messageBox');
+        const messageTitle = document.getElementById('messageTitle');
+        const messageSubtitle = document.getElementById('messageSubtitle');
+        const restartBtn = document.getElementById('restartBtn');
+
+        // Oyun Değişkenleri
+        let gameState = "START"; // START, PLAYING, TRANSITION, GAMEOVER
+        let currentRound = 1;
+        let applesCollected = 0;
+        let targetApples = 10; // İlk round için 10 elma lazım
+        let lives = 3;
+        let balls = [];
+
+        function spawnBall() {
+            if(gameState === "GAMEOVER") return;
+            
+            if(gameState === "PLAYING") {
+                const radius = Math.random() * 15 + 25; 
+                const x = Math.random() * (canvasElement.width - radius * 2) + radius;
+                const isTarget = Math.random() > 0.3; // %70 Elma, %30 Bomba
+                
+                // Round arttıkça düşme hızı da artar
+                const baseSpeed = 4 + (currentRound * 1.5); 
+                
+                balls.push({
+                    x: x, y: -radius, radius: radius,
+                    speed: Math.random() * 3 + baseSpeed, 
+                    isTarget: isTarget,
+                    color: isTarget ? '#e74c3c' : '#2c3e50' // Kırmızı Elma, Siyah/Gri Bomba
+                });
+            }
+            
+            // Round arttıkça topların gelme süresi kısalır (zorlaşır)
+            let spawnRate = Math.max(500, 1500 - (currentRound * 200));
+            setTimeout(spawnBall, spawnRate);
+        }
+
+        function handleRoundComplete() {
+            gameState = "TRANSITION";
+            balls = []; // Ekrandaki topları temizle
+            currentRound++;
+            applesCollected = 0;
+            targetApples += 5; // Her round 5 elma daha fazla ister
+            
+            // UI Güncelleme
+            messageTitle.style.color = "#2ecc71";
+            messageTitle.innerText = "TEBRİKLER!";
+            messageSubtitle.innerText = "ROUND " + currentRound + " BAŞLIYOR...";
+            messageBox.style.display = 'block';
+            restartBtn.style.display = 'none';
+
+            // 3 Saniye sonra yeni round başlar
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+                updateUI();
+                gameState = "PLAYING";
+            }, 3000);
+        }
+
+        function gameOver() {
+            gameState = "GAMEOVER";
+            balls = [];
+            messageTitle.style.color = "#e74c3c";
+            messageTitle.innerText = "OYUN BİTTİ!";
+            messageSubtitle.innerText = "Ulaştığın Seviye: ROUND " + currentRound;
+            messageBox.style.display = 'block';
+            restartBtn.style.display = 'inline-block';
+        }
+
+        function updateUI() {
+            roundDiv.innerText = "ROUND: " + currentRound;
+            appleDiv.innerText = "ELMA: " + applesCollected + " / " + targetApples;
+            livesDiv.innerText = "CAN: " + "❤️".repeat(lives);
+        }
+
+        function onResults(results) {
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if(gameState !== "PLAYING") { canvasCtx.restore(); return; }
+
+            // Artık BİLEKLERİ (15,16) değil ELLERİ/İŞARET PARMAKLARINI (19,20) kullanıyoruz
+            let hands = [];
+            if (results.poseLandmarks) {
+                const leftHand = results.poseLandmarks[19]; // Sol İşaret Parmağı
+                const rightHand = results.poseLandmarks[20]; // Sağ İşaret Parmağı
+                
+                if(leftHand.visibility > 0.5) hands.push({x: leftHand.x * canvasElement.width, y: leftHand.y * canvasElement.height});
+                if(rightHand.visibility > 0.5) hands.push({x: rightHand.x * canvasElement.width, y: rightHand.y * canvasElement.height});
+                
+                // Oyuncunun ellerini ekranda mavi parlayan halkalarla göster
+                canvasCtx.fillStyle = 'rgba(52, 152, 219, 0.7)';
+                for(let h of hands) {
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(h.x, h.y, 25, 0, 2 * Math.PI);
+                    canvasCtx.fill();
+                    canvasCtx.strokeStyle = 'white';
+                    canvasCtx.lineWidth = 3;
+                    canvasCtx.stroke();
+                }
+            }
+
+            for (let i = balls.length - 1; i >= 0; i--) {
+                let b = balls[i];
+                b.y += b.speed;
+                
+                let hit = false;
+                for(let h of hands) {
+                    let dist = Math.hypot(h.x - b.x, h.y - b.y);
+                    if(dist < b.radius + 25) { 
+                        hit = true;
+                        if(b.isTarget) {
+                            applesCollected += 1;
+                            if(applesCollected >= targetApples) {
+                                handleRoundComplete();
+                                canvasCtx.restore();
+                                return; // Çizimi kes ve çık
+                            }
+                        } else {
+                            lives -= 1;
+                            if(lives <= 0)
