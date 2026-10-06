@@ -6,7 +6,6 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Mobil Rehab Oyunu</title>
     
-    <!-- Sadece Pose kütüphanesini çekiyoruz, sorunlu Camera Utils kütüphanesini kaldırdık -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
     
     <style>
@@ -22,7 +21,7 @@
         }
         #startBtn { 
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
-            padding: 18px 40px; font-size: 22px; font-weight: bold; background-color: #e74c3c; 
+            padding: 18px 40px; font-size: 22px; font-weight: bold; background-color: #007acc; 
             color: white; border: none; border-radius: 50px; cursor: pointer; pointer-events: auto;
             box-shadow: 0px 8px 15px rgba(0, 0, 0, 0.3);
         }
@@ -31,7 +30,7 @@
             text-shadow: 2px 2px 4px #000; 
         }
         #roundInfo { top: 10px; left: 10px; color: #f1c40f; }
-        #appleInfo { top: 40px; left: 10px; color: #2ecc71; }
+        #targetInfo { top: 40px; left: 10px; color: #2ecc71; }
         #livesInfo { top: 10px; right: 10px; color: #e74c3c; }
         
         #messageBox {
@@ -45,13 +44,12 @@
     </style>
 </head>
 <body>
-    <!-- autoplay ve muted eklendi, mobil tarayıcılar sessiz videoları engellemez -->
     <video id="input_video" style="display: none;" playsinline autoplay muted></video>
     <canvas id="gameCanvas"></canvas>
     
     <div id="uiLayer">
         <div id="roundInfo" class="info" style="display: none;">ROUND: 1</div>
-        <div id="appleInfo" class="info" style="display: none;">ELMA: 0 / 10</div>
+        <div id="targetInfo" class="info" style="display: none;">HEDEF: 0 / 10</div>
         <div id="livesInfo" class="info" style="display: none;">CAN: ❤️❤️❤️</div>
         
         <button id="startBtn">Kamerayı Aç ve Başla</button>
@@ -69,7 +67,7 @@
         const canvasCtx = canvasElement.getContext('2d');
         const startBtn = document.getElementById('startBtn');
         const roundDiv = document.getElementById('roundInfo');
-        const appleDiv = document.getElementById('appleInfo');
+        const targetDiv = document.getElementById('targetInfo');
         const livesDiv = document.getElementById('livesInfo');
         const messageBox = document.getElementById('messageBox');
         const messageTitle = document.getElementById('messageTitle');
@@ -78,8 +76,8 @@
 
         let gameState = "START";
         let currentRound = 1;
-        let applesCollected = 0;
-        let targetApples = 10;
+        let targetsCollected = 0;
+        let targetGoal = 10;
         let lives = 3;
         let balls = [];
 
@@ -87,19 +85,23 @@
             if(gameState === "GAMEOVER") return;
             
             if(gameState === "PLAYING") {
-                const radius = Math.random() * 15 + 25; 
+                const radius = Math.random() * 15 + 30; // Topları biraz daha büyük yaptık (görünürlük için)
                 const x = Math.random() * (canvasElement.width - radius * 2) + radius;
-                const isTarget = Math.random() > 0.3; 
-                const baseSpeed = 4 + (currentRound * 1.5); 
+                const isTarget = Math.random() > 0.3; // %70 Yeşil
+                
+                // HIZ DÜŞÜRÜLDÜ: Başlangıç hızı 2, round başına sadece 0.5 artıyor
+                const baseSpeed = 2.0 + (currentRound * 0.5); 
                 
                 balls.push({
                     x: x, y: -radius, radius: radius,
-                    speed: Math.random() * 3 + baseSpeed, 
+                    speed: Math.random() * 1.5 + baseSpeed, 
                     isTarget: isTarget,
-                    color: isTarget ? '#e74c3c' : '#2c3e50'
+                    color: isTarget ? '#2ecc71' : '#e74c3c' // Hedef YEŞİL, Tuzak KIRMIZI
                 });
             }
-            let spawnRate = Math.max(500, 1500 - (currentRound * 200));
+            
+            // GELME SIKLIĞI AZALTILDI: Daha seyrek aralıklarla düşecekler
+            let spawnRate = Math.max(800, 2000 - (currentRound * 200));
             setTimeout(spawnBall, spawnRate);
         }
 
@@ -107,8 +109,8 @@
             gameState = "TRANSITION";
             balls = [];
             currentRound++;
-            applesCollected = 0;
-            targetApples += 5;
+            targetsCollected = 0;
+            targetGoal += 5;
             
             messageTitle.style.color = "#2ecc71";
             messageTitle.innerText = "TEBRİKLER!";
@@ -135,7 +137,7 @@
 
         function updateUI() {
             roundDiv.innerText = "ROUND: " + currentRound;
-            appleDiv.innerText = "ELMA: " + applesCollected + " / " + targetApples;
+            targetDiv.innerText = "HEDEF: " + targetsCollected + " / " + targetGoal;
             livesDiv.innerText = "CAN: " + "❤️".repeat(lives);
         }
 
@@ -177,8 +179,8 @@
                     if(dist < b.radius + 25) { 
                         hit = true;
                         if(b.isTarget) {
-                            applesCollected += 1;
-                            if(applesCollected >= targetApples) {
+                            targetsCollected += 1;
+                            if(targetsCollected >= targetGoal) {
                                 handleRoundComplete();
                                 canvasCtx.restore();
                                 return;
@@ -202,14 +204,6 @@
                     canvasCtx.arc(b.x, b.y, b.radius, 0, 2 * Math.PI);
                     canvasCtx.fillStyle = b.color;
                     canvasCtx.fill();
-                    
-                    if(b.isTarget){
-                        canvasCtx.beginPath();
-                        canvasCtx.arc(b.x, b.y - b.radius, 8, 0, 2 * Math.PI);
-                        canvasCtx.fillStyle = '#2ecc71'; 
-                        canvasCtx.fill();
-                    }
-                    
                     canvasCtx.lineWidth = 3;
                     canvasCtx.strokeStyle = 'white';
                     canvasCtx.stroke();
@@ -229,10 +223,8 @@
         });
         pose.onResults(onResults);
 
-        // DOĞRUDAN KAMERA ERİŞİMİ VE HATA YAKALAMA (YENİ SİSTEM)
         startBtn.addEventListener('click', async () => {
             try {
-                // Telefon kamerasını doğrudan istiyoruz
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
                 });
@@ -244,14 +236,13 @@
                     
                     startBtn.style.display = 'none';
                     roundDiv.style.display = 'block';
-                    appleDiv.style.display = 'block';
+                    targetDiv.style.display = 'block';
                     livesDiv.style.display = 'block';
                     
                     gameState = "PLAYING";
                     updateUI();
                     setTimeout(spawnBall, 2000);
                     
-                    // İşleme döngüsünü manuel başlatıyoruz
                     async function processVideoFrame() {
                         if (gameState !== "GAMEOVER") {
                             await pose.send({image: videoElement});
@@ -261,7 +252,6 @@
                     processVideoFrame();
                 };
             } catch (err) {
-                // Eğer mobil cihaz kamerayı engellerse ekrana pop-up mesaj fırlat
                 alert("KAMERA AÇILAMADI!\n\nSebep: " + err.message + "\n\nLütfen tarayıcınızın ayarlarına gidip bu sitenin kameraya erişmesine izin verin veya sayfayı yenileyip tekrar deneyin.");
             }
         });
