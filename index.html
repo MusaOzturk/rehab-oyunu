@@ -6,7 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Mobil Rehab Oyunu</title>
     
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <!-- Sadece Pose kütüphanesini çekiyoruz, sorunlu Camera Utils kütüphanesini kaldırdık -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
     
     <style>
@@ -45,7 +45,8 @@
     </style>
 </head>
 <body>
-    <video id="input_video" style="display: none;" playsinline></video>
+    <!-- autoplay ve muted eklendi, mobil tarayıcılar sessiz videoları engellemez -->
+    <video id="input_video" style="display: none;" playsinline autoplay muted></video>
     <canvas id="gameCanvas"></canvas>
     
     <div id="uiLayer">
@@ -55,7 +56,6 @@
         
         <button id="startBtn">Kamerayı Aç ve Başla</button>
         
-        <!-- Mesaj Kutusu (Round Geçişi ve Oyun Bittiğinde Kullanılır) -->
         <div id="messageBox">
             <h1 id="messageTitle" style="color: #2ecc71; margin: 0; font-size: 36px;">TEBRİKLER!</h1>
             <h2 id="messageSubtitle" style="color: #fff; margin: 20px 0;">ROUND 2 BAŞLIYOR...</h2>
@@ -76,11 +76,10 @@
         const messageSubtitle = document.getElementById('messageSubtitle');
         const restartBtn = document.getElementById('restartBtn');
 
-        // Oyun Değişkenleri
-        let gameState = "START"; // START, PLAYING, TRANSITION, GAMEOVER
+        let gameState = "START";
         let currentRound = 1;
         let applesCollected = 0;
-        let targetApples = 10; // İlk round için 10 elma lazım
+        let targetApples = 10;
         let lives = 3;
         let balls = [];
 
@@ -90,39 +89,33 @@
             if(gameState === "PLAYING") {
                 const radius = Math.random() * 15 + 25; 
                 const x = Math.random() * (canvasElement.width - radius * 2) + radius;
-                const isTarget = Math.random() > 0.3; // %70 Elma, %30 Bomba
-                
-                // Round arttıkça düşme hızı da artar
+                const isTarget = Math.random() > 0.3; 
                 const baseSpeed = 4 + (currentRound * 1.5); 
                 
                 balls.push({
                     x: x, y: -radius, radius: radius,
                     speed: Math.random() * 3 + baseSpeed, 
                     isTarget: isTarget,
-                    color: isTarget ? '#e74c3c' : '#2c3e50' // Kırmızı Elma, Siyah/Gri Bomba
+                    color: isTarget ? '#e74c3c' : '#2c3e50'
                 });
             }
-            
-            // Round arttıkça topların gelme süresi kısalır (zorlaşır)
             let spawnRate = Math.max(500, 1500 - (currentRound * 200));
             setTimeout(spawnBall, spawnRate);
         }
 
         function handleRoundComplete() {
             gameState = "TRANSITION";
-            balls = []; // Ekrandaki topları temizle
+            balls = [];
             currentRound++;
             applesCollected = 0;
-            targetApples += 5; // Her round 5 elma daha fazla ister
+            targetApples += 5;
             
-            // UI Güncelleme
             messageTitle.style.color = "#2ecc71";
             messageTitle.innerText = "TEBRİKLER!";
             messageSubtitle.innerText = "ROUND " + currentRound + " BAŞLIYOR...";
             messageBox.style.display = 'block';
             restartBtn.style.display = 'none';
 
-            // 3 Saniye sonra yeni round başlar
             setTimeout(() => {
                 messageBox.style.display = 'none';
                 updateUI();
@@ -147,24 +140,22 @@
         }
 
         function onResults(results) {
-            canvasElement.width = videoElement.videoWidth;
-            canvasElement.height = videoElement.videoHeight;
+            canvasElement.width = videoElement.videoWidth || 640;
+            canvasElement.height = videoElement.videoHeight || 480;
             canvasCtx.save();
             canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
             canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
             if(gameState !== "PLAYING") { canvasCtx.restore(); return; }
 
-            // Artık BİLEKLERİ (15,16) değil ELLERİ/İŞARET PARMAKLARINI (19,20) kullanıyoruz
             let hands = [];
             if (results.poseLandmarks) {
-                const leftHand = results.poseLandmarks[19]; // Sol İşaret Parmağı
-                const rightHand = results.poseLandmarks[20]; // Sağ İşaret Parmağı
+                const leftHand = results.poseLandmarks[19];
+                const rightHand = results.poseLandmarks[20];
                 
                 if(leftHand.visibility > 0.5) hands.push({x: leftHand.x * canvasElement.width, y: leftHand.y * canvasElement.height});
                 if(rightHand.visibility > 0.5) hands.push({x: rightHand.x * canvasElement.width, y: rightHand.y * canvasElement.height});
                 
-                // Oyuncunun ellerini ekranda mavi parlayan halkalarla göster
                 canvasCtx.fillStyle = 'rgba(52, 152, 219, 0.7)';
                 for(let h of hands) {
                     canvasCtx.beginPath();
@@ -190,8 +181,90 @@
                             if(applesCollected >= targetApples) {
                                 handleRoundComplete();
                                 canvasCtx.restore();
-                                return; // Çizimi kes ve çık
+                                return;
                             }
                         } else {
                             lives -= 1;
-                            if(lives <= 0)
+                            if(lives <= 0) {
+                                gameOver();
+                                canvasCtx.restore();
+                                return;
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                if(hit || b.y > canvasElement.height + b.radius) {
+                    balls.splice(i, 1);
+                } else {
+                    canvasCtx.beginPath();
+                    canvasCtx.arc(b.x, b.y, b.radius, 0, 2 * Math.PI);
+                    canvasCtx.fillStyle = b.color;
+                    canvasCtx.fill();
+                    
+                    if(b.isTarget){
+                        canvasCtx.beginPath();
+                        canvasCtx.arc(b.x, b.y - b.radius, 8, 0, 2 * Math.PI);
+                        canvasCtx.fillStyle = '#2ecc71'; 
+                        canvasCtx.fill();
+                    }
+                    
+                    canvasCtx.lineWidth = 3;
+                    canvasCtx.strokeStyle = 'white';
+                    canvasCtx.stroke();
+                }
+            }
+
+            updateUI();
+            canvasCtx.restore();
+        }
+
+        const pose = new Pose({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`});
+        pose.setOptions({
+            modelComplexity: 0, 
+            smoothLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        pose.onResults(onResults);
+
+        // DOĞRUDAN KAMERA ERİŞİMİ VE HATA YAKALAMA (YENİ SİSTEM)
+        startBtn.addEventListener('click', async () => {
+            try {
+                // Telefon kamerasını doğrudan istiyoruz
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+                });
+                
+                videoElement.srcObject = stream;
+                
+                videoElement.onloadedmetadata = () => {
+                    videoElement.play();
+                    
+                    startBtn.style.display = 'none';
+                    roundDiv.style.display = 'block';
+                    appleDiv.style.display = 'block';
+                    livesDiv.style.display = 'block';
+                    
+                    gameState = "PLAYING";
+                    updateUI();
+                    setTimeout(spawnBall, 2000);
+                    
+                    // İşleme döngüsünü manuel başlatıyoruz
+                    async function processVideoFrame() {
+                        if (gameState !== "GAMEOVER") {
+                            await pose.send({image: videoElement});
+                            requestAnimationFrame(processVideoFrame);
+                        }
+                    }
+                    processVideoFrame();
+                };
+            } catch (err) {
+                // Eğer mobil cihaz kamerayı engellerse ekrana pop-up mesaj fırlat
+                alert("KAMERA AÇILAMADI!\n\nSebep: " + err.message + "\n\nLütfen tarayıcınızın ayarlarına gidip bu sitenin kameraya erişmesine izin verin veya sayfayı yenileyip tekrar deneyin.");
+            }
+        });
+    </script>
+</body>
+</html>
